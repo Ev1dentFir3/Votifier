@@ -1,7 +1,10 @@
 ﻿using Rocket;
-using Rocket.Logging;
-using Rocket.RocketAPI;
-using Rocket.RocketAPI.Events;
+using Rocket.Unturned;
+using Rocket.Unturned.Events;
+using Rocket.Unturned.Logging;
+using Rocket.Unturned.Player;
+using Rocket.Unturned.Plugins;
+using unturned.ROCKS.Uconomy;
 using SDG;
 using Steamworks;
 using System;
@@ -17,7 +20,69 @@ namespace unturned.ROCKS.Votifier
         {
             Instance = this;
             RocketServerEvents.OnPlayerConnected += Events_OnPlayerConnected;
+            if (Configuration.EnablePlugin)
+            {
+                OnPlayerVoted += Votifier_OnPlayerVoted;
+            }
         }
+
+        void Votifier_OnPlayerVoted(RocketPlayer player, ServiceDefinition definition)
+        {
+            
+            int propabilysum = Instance.Configuration.RewardBundles.Sum(p => p.Probability);
+
+            RewardBundle bundle = new RewardBundle();
+
+            if (propabilysum != 0)
+            {
+                Random r = new Random();
+
+                int i = 0, diceRoll = r.Next(0, propabilysum);
+
+                foreach (RewardBundle b in Instance.Configuration.RewardBundles)
+                {
+                    if (diceRoll > i && diceRoll <= i + b.Probability)
+                    {
+                        bundle = b;
+                        break;
+                    }
+                    i = i + b.Probability;
+                }
+            }
+            else
+            {
+                Logger.Log(Instance.Translate("no_rewards_found"));
+                return;
+            }
+
+            foreach (Reward reward in bundle.Rewards)
+            {
+                
+                if (!player.GiveItem(reward.ItemId, reward.Amount))
+                {
+                    Logger.Log(Instance.Translate("vote_give_error_message", player.CharacterName, reward.ItemId, reward.Amount));
+                }
+            }
+
+            if (Instance.Configuration.EnableRewardBundles == true && Instance.Configuration.EnableRewardUconomy == false)
+            {
+                RocketChat.Say(Instance.Translate("vote_success_message1", player.CharacterName, definition.Name, bundle.Name));        
+            }
+
+            if (Instance.Configuration.EnableRewardBundles == false && Instance.Configuration.EnableRewardUconomy == true)
+            {
+                RocketChat.Say(Instance.Translate("vote_success_message2", player.CharacterName, definition.Name, Configuration.UconomyCredit));
+            }
+
+            if (Instance.Configuration.EnableRewardBundles == true && Instance.Configuration.EnableRewardUconomy == true)
+            {
+                RocketChat.Say(Instance.Translate("vote_success_message3", player.CharacterName, definition.Name, bundle.Name, Configuration.UconomyCredit));
+            }
+            
+        }
+
+        public delegate void PlayerVotedEvent(RocketPlayer player, ServiceDefinition definition);
+        public event PlayerVotedEvent OnPlayerVoted;
 
         public override Dictionary<string, string> DefaultTranslations
         {
@@ -30,16 +95,18 @@ namespace unturned.ROCKS.Votifier
                     {"not_yet_voted","You have not yet voted for this server on: {0}"},
                     {"no_rewards_found","Failed finding any rewardbundles"},
                     {"vote_give_error_message","Failed giving a item to {0} ({1},{2})"},
-                    {"vote_success_message","{0} voted on {1} and received the \"{2}\" bundle"},
+                    {"vote_success_message1","{0} voted on {1} receiving a \"{2}\""},
+                    {"vote_success_message2","{0} voted on {1} receiving \"{2}\" munny"},
+                    {"vote_success_message3","{0} voted on {1} receiving a \"{2}\" and \"{3}\" munny"},
                     {"vote_pending_message","You have an outstanding reward for your vote on {0}"},
                     {"vote_due_message","You have already voted for this server on {0}, Thanks!"}
                 };
             }
         }
 
-        void Events_OnPlayerConnected(Player player)
+        void Events_OnPlayerConnected(RocketPlayer player)
         {
-            Vote(player.SteamChannel.SteamPlayer.SteamPlayerID.CSteamID,false);
+            Vote(player.CSteamID,false);
         }
 
         public static void Vote(CSteamID caller,bool giveItemDirectly = true)
@@ -67,7 +134,7 @@ namespace unturned.ROCKS.Votifier
                     catch (TimeoutException)
                     {
                         Logger.Log(Instance.Translate("api_down_message", service.Name));
-                        RocketChatManager.Say(caller, Instance.Translate("api_down_message", service.Name));
+                        RocketChat.Say(caller, Instance.Translate("api_down_message", service.Name));
                     }
                 }
             }
@@ -91,7 +158,7 @@ namespace unturned.ROCKS.Votifier
         {
             VoteResult v = new VoteResult() { caller = _caller, result = e.Result, apidefinition = _apidefinition, service = _service, giveItemDirectly = _giveItemDirectly };
           
-            RocketTaskManager.Enqueue(() =>
+            EnqueueTask(() =>
             {
                 handleVote(v);
             });
@@ -104,55 +171,27 @@ namespace unturned.ROCKS.Votifier
             switch (result.result)
             {
                 case "0":
-                    RocketChatManager.Say(result.caller, Instance.Translate("not_yet_voted", result.service.Name));
+                    RocketChat.Say(result.caller, Instance.Translate("not_yet_voted", result.service.Name));
                     break;
                 case "1":
+                                                    
                     if (result.giveItemDirectly)
                     {
-                        int propabilysum = Instance.Configuration.RewardBundles.Sum(p => p.Probability);
-
-                        RewardBundle bundle = new RewardBundle();
-
-                        if (propabilysum != 0)
+                        if (Instance.OnPlayerVoted != null)
                         {
-                            Random r = new Random();
-
-                            int i = 0, diceRoll = r.Next(0, propabilysum);
-
-                            foreach (RewardBundle b in Instance.Configuration.RewardBundles)
-                            {
-                                if (diceRoll > i && diceRoll <= i + b.Probability)
-                                {
-                                    bundle = b;
-                                    break;
-                                }
-                                i = i + b.Probability;
-                            }
+                            if (Votifier.Instance.Configuration.EnableRewardBundles == true) Instance.OnPlayerVoted(RocketPlayer.FromCSteamID(result.caller), result.apidefinition);
+                            if (Votifier.Instance.Configuration.EnableRewardUconomy == true) Uconomy.Uconomy.Instance.Database.IncreaseBalance(voter.SteamPlayerID.CSteamID, Instance.Configuration.UconomyCredit);
                         }
-                        else
-                        {
-                            Logger.Log(Instance.Translate("no_rewards_found"));
-                            return;
-                        }
-
-                        foreach (Reward reward in bundle.Rewards)
-                        {
-                            if (!ItemTool.tryForceGiveItem(voter.Player, reward.ItemId, reward.Amount))
-                            {
-                                Logger.Log(Instance.Translate("vote_give_error_message", voter.SteamPlayerID.CharacterName, reward.ItemId, reward.Amount));
-                            }
-                        }
-                        RocketChatManager.Say(Instance.Translate("vote_success_message", voter.SteamPlayerID.CharacterName, result.service.Name, bundle.Name));
                         new VotifierWebclient().DownloadStringAsync(new Uri(String.Format(result.apidefinition.ReportSuccess, result.service.APIKey, result.caller.ToString())));
                         return;
                     }
                     else
                     {
-                        RocketChatManager.Say(result.caller, Instance.Translate("vote_pending_message", result.service.Name));
+                        RocketChat.Say(result.caller, Instance.Translate("vote_pending_message", result.service.Name));
                         return;
                     }
                 case "2":
-                    RocketChatManager.Say(result.caller, Instance.Translate("vote_due_message", result.service.Name));
+                    RocketChat.Say(result.caller, Instance.Translate("vote_due_message", result.service.Name));
                     break;
             }
         }

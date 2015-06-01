@@ -1,24 +1,36 @@
-﻿using Rocket;
-using Rocket.RocketAPI;
-using SDG;
+﻿using Rocket.Unturned.Commands;
+using Rocket.Unturned.Player;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 
 namespace unturned.ROCKS.Votifier
 {
-    class CommandReward : Command
+    public class CommandReward : IRocketCommand
     {
-        public CommandReward()
-        {
-            base.commandName = "reward";
-            base.commandHelp = "Get rewards for voting";
-            base.commandInfo = base.commandName + " - " + base.commandHelp;
-        }
-
-        protected override void execute(SteamPlayerID caller, string command)
+        public void Execute(RocketPlayer caller, params string[] command)
         {
             Votifier.Vote(caller.CSteamID);
+        }
+
+        public string Help
+        {
+            get { return "Get rewards for voting"; }
+        }
+
+        public string Name
+        {
+            get { return "reward"; }
+        }
+
+        public string Syntax
+        {
+            get { return ""; }
+        }
+
+        public bool RunFromConsole
+        {
+            get { return false; }
         }
     }
 }

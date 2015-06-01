@@ -1,19 +1,25 @@
-﻿using Rocket.RocketAPI;
+﻿using Rocket.API;
 using System.Collections.Generic;
 using System.Xml.Serialization;
 
 namespace unturned.ROCKS.Votifier
 {
-    public class VotifierConfiguration : RocketConfiguration
+    public class VotifierConfiguration : IRocketPluginConfiguration
     {
         [XmlArrayItem(ElementName = "Service")]
         public List<Service> Services;
+        public bool EnablePlugin = true;
+        public bool EnableRewardUconomy = false;
+        public bool EnableRewardBundles = true;
+
+        public int UconomyCredit = 5000;
+
         [XmlArrayItem(ElementName = "RewardBundle")]
         public List<RewardBundle> RewardBundles;
         [XmlArrayItem(ElementName = "ServiceDefinition")]
         public List<ServiceDefinition> ServiceDefinitions;
 
-        public RocketConfiguration DefaultConfiguration
+        public IRocketPluginConfiguration DefaultConfiguration
         {
             get {
                 VotifierConfiguration configuration = new VotifierConfiguration();
@@ -35,6 +41,7 @@ namespace unturned.ROCKS.Votifier
                     new RewardBundle() { Name="Brute Force", Rewards = new List<Reward>() { new Reward(112, 1), new Reward(113, 3), new Reward(254, 3) }, Probability = 33 },
                     new RewardBundle() { Name="Watcher", Rewards = new List<Reward>() { new Reward(109, 1), new Reward(111, 3), new Reward(236, 1) }, Probability = 33 }
                 };
+                configuration.EnableRewardBundles = true;
                 configuration.Services = new List<Service>() { new Service("unturned-servers.net"), new Service("unturnedsl.com") };
                 return configuration;
             }
